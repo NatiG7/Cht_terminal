@@ -1,6 +1,7 @@
 # Cht
 
-A command-line tool to record audio and generate a one-liner bash command based on the content.
+A command-line tool to record audio and generate a one-liner bash command in response based on the content.
+It uses whisper Open-AI model "whisper-1" as well as "gpt-3.5-turbo"
 
 ## Installation
 
