@@ -1,0 +1,132 @@
+#!/usr/bin/env python3
+
+import json
+import os
+import sys
+import wave
+from io import BytesIO
+from pydub import AudioSegment
+import pyaudio
+import requests
+import argparse
+import time
+
+def record_audio(duration=13, output_file="audio.mp3"):
+    FORMAT = pyaudio.paInt16
+    CHANNELS = 1
+    RATE = 16000
+    CHUNK = 1024
+
+    audio = pyaudio.PyAudio()
+    stream = audio.open(
+        format=FORMAT,
+        channels=CHANNELS,
+        rate=RATE,
+        input=True,
+        frames_per_buffer=CHUNK,
+    )
+
+    print("R...", end='', flush=True)
+
+    frames = []
+    for _ in range(0, int(RATE / CHUNK * duration)):
+        data = stream.read(CHUNK)
+        frames.append(data)
+
+    print(f"Got it" , end='', flush="True")
+
+    stream.stop_stream()
+    stream.close()
+    audio.terminate()
+
+    with open(output_file, "wb") as f:
+        wav_file = BytesIO()
+        wave_file = wave.open(wav_file, "wb")
+        wave_file.setnchannels(CHANNELS)
+        wave_file.setsampwidth(audio.get_sample_size(FORMAT))
+        wave_file.setframerate(RATE)
+        wave_file.writeframes(b"".join(frames))
+        wave_file.close()
+
+        wav_audio = AudioSegment.from_file(wav_file, format="wav")
+        wav_audio.export(f, format="mp3")
+
+    return output_file
+
+def clear_line():
+    sys.stdout.write('\033[K')  # Clear line
+    sys.stdout.write('\033[1G')  # Move cursor to the beginning of the line
+    sys.stdout.flush()
+
+def transcribe_audio(file_path):
+    with open(file_path, "rb") as f:
+        response = requests.post(
+            "https://api.openai.com/v1/audio/transcriptions",
+            headers={
+                "Authorization": f"Bearer {OPENAI_API_KEY}",
+            },
+            files={"file": f},
+            data={"model": "whisper-1"},
+        )
+    return response.json()["text"]
+
+def get_code_oneliner(transcript):
+    payload = {
+        "model": "gpt-3.5-turbo",
+        "messages": [{"role": "user", "content": f"Please provide a one-liner bash terminal command based on its content: {transcript}"}],
+    }
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {OPENAI_API_KEY}",
+    }
+    response = requests.post(
+        "https://api.openai.com/v1/chat/completions",
+        data=json.dumps(payload),
+        headers=headers,
+    )
+    # print(response.json())
+    return response.json()["choices"][0]["message"]["content"]
+
+# def delete_audio_file(file_path):
+#     os.remove(file_path)
+
+def list_models():
+    response = requests.get(
+        "https://api.openai.com/v1/models",
+        headers={
+            "Authorization": f"Bearer {OPENAI_API_KEY}",
+        },
+    )
+    models = response.json()["data"]
+    print("Available models:")
+    for model in models:
+        print(f"- {model['id']}")
+
+def main():
+    parser = argparse.ArgumentParser(description="Record audio and generate a one-liner bash command based on the content.")
+    parser.add_argument("-d", "--duration", type=int, default=13, help="Duration of the recording in seconds (default: 13, max: 60)")
+    parser.add_argument("-t", "--token", type=str, help="API token for OpenAI")
+    parser.add_argument("-m", "--list-models", action="store_true", help="List available models and exit")
+    args = parser.parse_args()
+    if args.token:
+        global OPENAI_API_KEY
+        OPENAI_API_KEY = args.token
+
+    if args.list_models:
+        list_models()
+        return
+    
+    if args.duration > 60:
+        print("Error: Maximum recording duration is 60 seconds.")
+        sys.exit(1)
+    audio_file = record_audio(duration=13)
+    clear_line()
+    transcript = transcribe_audio(audio_file)
+    clear_line()
+    time.sleep(1.1)
+    code_oneliner = get_code_oneliner(transcript)
+    print(code_oneliner)
+    os.remove(audio_file)
+
+if __name__ == "__main__":
+    main()
