@@ -10,6 +10,32 @@ import pyaudio
 import requests
 import argparse
 import time
+import configparser
+
+CONFIG_FILE = os.path.join(os.path.expanduser("~"), ".cht_config")
+
+def save_token(token):
+    config = configparser.ConfigParser()
+    config.read(CONFIG_FILE)
+    if "default" not in config.sections():
+        config.add_section("default")
+
+    config.set("default", "api_key", token)
+
+    with open(CONFIG_FILE, "w") as configfile:
+        config.write(configfile)
+
+def load_token():
+    if not os.path.exists(CONFIG_FILE):
+        return None
+
+    config = configparser.ConfigParser()
+    config.read(CONFIG_FILE)
+
+    if "default" in config.sections():
+        return config.get("default", "api_key", fallback=None)
+    else:
+        return None
 
 def record_audio(duration=13, output_file="audio.mp3"):
     FORMAT = pyaudio.paInt16
@@ -84,11 +110,8 @@ def get_code_oneliner(transcript):
         data=json.dumps(payload),
         headers=headers,
     )
-    # print(response.json())
     return response.json()["choices"][0]["message"]["content"]
 
-# def delete_audio_file(file_path):
-#     os.remove(file_path)
 
 def list_models():
     response = requests.get(
@@ -111,6 +134,12 @@ def main():
     if args.token:
         global OPENAI_API_KEY
         OPENAI_API_KEY = args.token
+        save_token(args.token)
+    else:
+        OPENAI_API_KEY = load_token()
+        if OPENAI_API_KEY is None:
+            print("Error: No API token provided or saved. Please use the -t flag to set your API token.")
+            sys.exit(1)
 
     if args.list_models:
         list_models()
